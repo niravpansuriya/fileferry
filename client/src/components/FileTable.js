@@ -6,6 +6,7 @@ import {
 	sendMessageOnWebRTC,
 	requestFile,
 	requestFileMetaData,
+	initWebRTCConnection,
 } from '../services/webrtc';
 import { useDispatch, useSelector } from 'react-redux';
 import { isWebRTCConnected, setOwnType } from '../redux/store';
@@ -17,14 +18,13 @@ export default function FileTable() {
 
 	const handleDownload = () => {
 		requestFile(0);
-		// sendMessageOnWebRTC("HELLO")
-		// requestFileMetaData();
 	};
 
 	useEffect(() => {
-		dispatch(setOwnType("RECEIVER"))
+		dispatch(setOwnType('RECEIVER'));
 		(async () => {
 			const senderId = params.socketId;
+			await initWebRTCConnection(senderId);
 			const offer = await createOffer();
 			sendOffer(offer, senderId);
 		})();

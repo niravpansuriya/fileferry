@@ -7,55 +7,62 @@ import store, {
 	setIsWebRTCConnected,
 } from '../redux/store';
 import { parseArrayBuffer } from '../utils/files';
-import { sendICE } from './socket';
+import { sendICE, sendOffer } from './socket';
 
-export const peerConnection = new RTCPeerConnection();
-export const dataConnection = peerConnection.createDataChannel('fileChannel');
-export const arrayBufferConnection =
-	peerConnection.createDataChannel('arrayBufferChannel');
+export let peerConnection = null;
+export let dataConnection = null;
+export let arrayBufferConnection = null;
 export const iceCandidates = [];
 export const connections = [];
 
-peerConnection.onicecandidate = (event) => {
-	if (event.candidate) {
-		iceCandidates.push(event.candidate);
-		for (const connection of connections) {
-			sendICE([event.candidate], connection);
-		}
-	}
-};
-
-peerConnection.ondatachannel = (event) => {
-	if (event.channel.label === 'arrayBufferChannel') {
-		event.channel.onopen = () => {
-			console.log('Array Buffer Channel is connected');
-		};
-
-		event.channel.onmessage = async (event) => {
-			const data = parseArrayBuffer(event.data);
-			if (data) {
-				const { fileId, chunkId, blobChunk } = data;
-				if (fileId != undefined && chunkId != undefined && blobChunk) {
-					store.dispatch(
-						addChunkInFile({
-							fileId,
-							chunkId,
-							chunk: blobChunk,
-						})
-					);
+const initHandlersOnConnection = () => {
+	if (peerConnection && dataConnection) {
+		peerConnection.onicecandidate = (event) => {
+			if (event.candidate) {
+				iceCandidates.push(event.candidate);
+				for (const connection of connections) {
+					sendICE([event.candidate], connection);
 				}
 			}
 		};
-	} else {
-		event.channel.onopen = () => {
-			console.log('Listener is connected');
-			updateConnectionStatus(true);
-		};
 
-		event.channel.onmessage = async (event) => {
-			var received = JSON.parse(event.data);
-			// received = await deserialize(received);
-			await handleMessage(received);
+		peerConnection.ondatachannel = (event) => {
+			if (event.channel.label === 'arrayBufferChannel') {
+				event.channel.onopen = () => {
+					console.log('Array Buffer Channel is connected');
+				};
+
+				event.channel.onmessage = async (event) => {
+					const data = parseArrayBuffer(event.data);
+					if (data) {
+						const { fileId, chunkId, blobChunk } = data;
+						if (
+							fileId != undefined &&
+							chunkId != undefined &&
+							blobChunk
+						) {
+							store.dispatch(
+								addChunkInFile({
+									fileId,
+									chunkId,
+									chunk: blobChunk,
+								})
+							);
+						}
+					}
+				};
+			} else {
+				event.channel.onopen = () => {
+					console.log('Listener is connected');
+					updateConnectionStatus(true);
+				};
+
+				event.channel.onmessage = async (event) => {
+					var received = JSON.parse(event.data);
+					// received = await deserialize(received);
+					await handleMessage(received);
+				};
+			}
 		};
 	}
 };
@@ -68,6 +75,7 @@ export const createOffer = async () => {
 
 export const generateAnswer = async (offer) => {
 	if (offer) {
+		await initWebRTCConnection();
 		await peerConnection.setRemoteDescription(
 			new RTCSessionDescription(offer)
 		);
@@ -196,4 +204,12 @@ export const requestFile = async (fileId, chunkId = 0) => {
 		fileId,
 		chunkId,
 	});
+};
+
+export const initWebRTCConnection = async (senderId) => {
+	peerConnection = new RTCPeerConnection();
+	dataConnection = peerConnection.createDataChannel('fileChannel');
+	arrayBufferConnection =
+		peerConnection.createDataChannel('arrayBufferChannel');
+	initHandlersOnConnection();
 };
